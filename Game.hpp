@@ -4,8 +4,6 @@
 
 #include <string>
 #include <allegro5/allegro5.h>
-#include <allegro5/allegro_ttf.h>
-#include <allegro5/allegro_font.h>
 
 const unsigned int WINDOW_SIZE = 960;
 const unsigned int MARGIN = 90;
@@ -17,7 +15,6 @@ const float TILE_SIZE = (WINDOW_SIZE - 2 * MARGIN) / 8;
 const std::string ASSETS_PATH = "./assets/";
 
 class Game {
-	ALLEGRO_FONT* font;
 	ALLEGRO_DISPLAY* display;
 
 	Board* board;
