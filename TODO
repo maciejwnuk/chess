@@ -1,8 +1,0 @@
-Logic:
- ☐ Possible moves - for player, not for piece only @critical
- ☐ Check is only when there is at least one possible move that makes king position out of other player's list of moves 
- ☐ Mate is only when there is not such a move
-
-Moves:
-  ☐ Castling
-  ☐ En passant

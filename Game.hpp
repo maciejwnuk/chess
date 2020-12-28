@@ -75,9 +75,8 @@ class Game {
 
 	entt::registry registry;
 
-	// Keep track of kings, no need to look for them
+	// There are only two pieces that we need to keep tracking of
 	entt::entity kings[2];
-	bool is_check;
 
 	void setup_allegro();
 	void load_assets();
@@ -92,19 +91,19 @@ class Game {
 	std::optional<entt::entity> get_selected_piece();
 	std::optional<entt::entity> get_piece_by_tile_pos(Position pos);
 
-	std::vector<Position> get_possible_moves(entt::entity entity);
+	std::vector<Position> calc_possible_moves_for(entt::entity entity);
+	void calc_possible_moves();
 
-	bool is_piece_endangered(entt::entity entity);
-
-	void make_turn();
+	bool is_king_checked(entt::entity king);
+	bool is_king_mated(entt::entity king);
 public:
 	Game();
 	int run();
 	~Game();
 };
 
-typedef struct {
+struct Sprite {
 	ALLEGRO_BITMAP* ptr;
-} Sprite;
+};
 
 bool is_position_in_board(Position pos);

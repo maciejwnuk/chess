@@ -12,7 +12,6 @@ Game::Game() {
 	setup_pieces();
 
 	turn = White;
-	is_check = false;
 }
 
 void Game::setup_allegro() {
@@ -68,11 +67,16 @@ void Game::setup_pieces() {
 		registry.emplace<Role>(entity, std::get<1>(INITIAL_VALUES[i]));
 		registry.emplace<Side>(entity, std::get<2>(INITIAL_VALUES[i]));
 		registry.emplace<Sprite>(entity, sprites[std::get<1>(INITIAL_VALUES[i]) + std::get<2>(INITIAL_VALUES[i]) * 6]);
+		registry.emplace<PossibleMoves>(entity);
+		registry.emplace<OnBoard>(entity);
 
-		if (std::get<1>(INITIAL_VALUES[i]) == King) {
+		if (std::get<1>(INITIAL_VALUES[i]) == King) 
 			kings[std::get<2>(INITIAL_VALUES[i])] = entity;
-		}
 	}
+
+	// Calculate initial possibilities 
+	// TODO: Optimize - make initial possibilities static as all initial values
+	calc_possible_moves();
 }
 
 void Game::load_assets() {
@@ -81,11 +85,17 @@ void Game::load_assets() {
 }
 
 int Game::run() {
+	// Some helpers to get through
 	ALLEGRO_EVENT event;
 	ALLEGRO_MOUSE_STATE mstate;
 
 	bool done = false;
 	bool redraw = true;
+
+	std::optional<entt::entity> moved_piece = {};
+	std::optional<entt::entity> taken_piece = {};
+
+	Position tile_pos;
 
 	// Game loop
 	while (!done) {
@@ -99,9 +109,7 @@ int Game::run() {
 				int x = (mstate.x - MARGIN) / TILE_SIZE + 1;
 				int y = (mstate.y - MARGIN) / TILE_SIZE + 1;
 
-				Position tile_pos = Position { x, y };
-
-				bool moved = false;
+				tile_pos = Position { x, y };
 
 				// If there is previously selected piece
 				auto selected = get_selected_piece();
@@ -118,21 +126,19 @@ int Game::run() {
 							registry.emplace<Selected>(*piece);
 						// Otherwise check if it can be taken
 						} else {
-							auto moves = get_possible_moves(*selected);
+							auto moves = registry.get<PossibleMoves>(*selected);
 
 							if (std::count(moves.begin(), moves.end(), tile_pos)) {
-								registry.destroy(*piece);
-								registry.replace<Position>(*selected, tile_pos);
-								moved = true;
+								moved_piece = selected;
+								taken_piece = piece;
 							}
 						}
 					// Or just try to move
 					} else {
-						auto moves = get_possible_moves(*selected);
+						auto moves = registry.get<PossibleMoves>(*selected);
 
 						if (std::count(moves.begin(), moves.end(), tile_pos)) {
-							registry.replace<Position>(*selected, tile_pos);
-							moved = true;
+							moved_piece = selected;
 						}
 					}
 				// If not try to select piece (if there is any)
@@ -143,23 +149,6 @@ int Game::run() {
 					if (turn == side) {
 						registry.emplace<Selected>(*piece);
 					}
-				} 
-
-				if (moved) {
-					make_turn();
-
-					// Check for checks
-					auto pos = registry.get<Position>(kings[turn]);
-					auto moves = get_possible_moves(*selected);
-
-					if (std::count(moves.begin(), moves.end(), pos)) {
-						std::cout << "Check!" << std::endl;
-					}
-
-					moved = false;
-
-					// TODO: Player cannot check own king by self
-					// TODO: Mate
 				}
 
 				// Redraw every click ??
@@ -173,6 +162,62 @@ int Game::run() {
 			break;
 		}
 
+		// Launch machinery after move
+		if (moved_piece) {
+			// Check if move wouldnt check own king 
+			Position old_pos = registry.get<Position>(*moved_piece);
+			registry.replace<Position>(*moved_piece, tile_pos);
+
+			if (taken_piece) {
+				registry.remove<OnBoard>(*taken_piece);
+			}
+
+			calc_possible_moves();
+
+			// If checked, revert
+			if (is_king_checked(kings[turn])) {
+				registry.replace<Position>(*moved_piece, old_pos);
+
+				if (taken_piece) {
+					registry.emplace<OnBoard>(*taken_piece);
+				}
+
+				calc_possible_moves();
+			// Else move on
+			} else {
+				// Pawn helper
+				if(!registry.has<Moved>(*moved_piece)) {
+				    registry.emplace<Moved>(*moved_piece);
+				}
+
+				// Switch turns
+				turn = (turn) ? White : Black;
+
+				// Refresh possibilities
+				calc_possible_moves();
+
+				// Check for checks
+				if (is_king_checked(kings[turn])) {
+					std::cout << "Checked" << std::endl;
+
+					// Check for mates
+					if (is_king_mated(kings[turn])) {
+						std::cout << "And mated!" << std::endl;
+
+						if (turn)
+							std::cout << "White wins!" << std::endl;
+						else 
+							std::cout << "Black wins!" << std::endl;
+						// done = true;
+					}
+				}
+			}
+
+			moved_piece = {};
+			taken_piece = {};
+		}
+
+		// Redraw every click ??
 		if (redraw) {
 
 			draw_board();
@@ -249,7 +294,7 @@ void Game::draw_notation() {
 }
 
 void Game::draw_pieces() {
-	auto view = registry.view<Position, Sprite>();
+	auto view = registry.view<Position, Sprite, OnBoard>();
 
 	for (auto entity: view) {
 		auto pos = view.get<Position>(entity);
@@ -282,7 +327,7 @@ void Game::draw_pieces() {
 }
 
 std::optional<entt::entity> Game::get_piece_by_tile_pos(Position pos) {
-	auto view = registry.view<Position>();
+	auto view = registry.view<Position, OnBoard>();
 
 	for (auto entity: view) {
 		if (view.get<Position>(entity) == pos) {
@@ -303,7 +348,7 @@ std::optional<entt::entity> Game::get_selected_piece() {
 	return {};
 }
 
-std::vector<Position> Game::get_possible_moves(entt::entity entity) {
+std::vector<Position> Game::calc_possible_moves_for(entt::entity entity) {
 	auto origin = registry.get<Position>(entity);
 	auto role = registry.get<Role>(entity);
 	auto side = registry.get<Side>(entity);
@@ -501,22 +546,79 @@ std::vector<Position> Game::get_possible_moves(entt::entity entity) {
 
 	return possibilities;
 }
+void Game::calc_possible_moves() {
+	auto view = registry.view<OnBoard>();
 
-void Game::make_turn() {
-	turn = (turn) ? White : Black;
+	for(auto entity: view) {
+	    auto moves = calc_possible_moves_for(entity);
+
+	    registry.replace<PossibleMoves>(entity, moves);
+	}
 }
 
-// bool Game::is_tile_occupied(Position pos) {
-//     auto view = registry.view<Position>();
+bool Game::is_king_checked(entt::entity king) {
+    auto pos = registry.get<Position>(king);
+    auto opposing_side = (registry.get<Side>(king)) ? White : Black;
 
-//     for (auto entity: view) {
-//         if (view.get<Position>(entity) == pos) {
-//             return true;
-//         }
-//     }
+	auto view = registry.view<Side, PossibleMoves, OnBoard>();
 
-//     return false;
-// }
+	for (auto entity: view) {
+	    if (registry.get<Side>(entity) == opposing_side) {
+	    	auto moves = registry.get<PossibleMoves>(entity);
+
+			if (std::count(moves.begin(), moves.end(), pos)) {
+				return true;
+			}
+	    }
+	}
+
+    return false;
+}
+
+bool Game::is_king_mated(entt::entity king) {
+    auto side = registry.get<Side>(king);
+
+	auto view = registry.view<Position, Side, PossibleMoves, OnBoard>();
+
+	for (auto entity: view) {
+	    if (registry.get<Side>(entity) == side) {
+	    	auto moves = registry.get<PossibleMoves>(entity);
+	    	auto old_pos = registry.get<Position>(entity);
+
+	    	for (auto pos: moves) {
+	    		auto piece = get_piece_by_tile_pos(pos);
+
+	    		if (piece) {
+	    			registry.remove<OnBoard>(*piece);
+	    		}
+
+	    		registry.replace<Position>(entity, pos);
+	    		calc_possible_moves();
+
+	    		if (!is_king_checked(king)) {
+	    			registry.replace<Position>(entity, old_pos);
+
+		    		if (piece) {
+		    			registry.emplace<OnBoard>(*piece);
+		    		}
+		    		
+	    			calc_possible_moves();
+
+	    			return false;
+	    		}
+
+	    		if (piece) {
+	    			registry.emplace<OnBoard>(*piece);
+	    		}
+
+	    		registry.replace<Position>(entity, old_pos);
+	    		calc_possible_moves();
+	    	}
+	    }
+	}
+
+    return true;
+}
 
 Game::~Game() {
 	al_uninstall_mouse();
