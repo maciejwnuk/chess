@@ -1,28 +1,28 @@
 #pragma once
 
-#include <allegro5/allegro5.h>
+struct Position {
+	int x, y;
 
-typedef enum {
-	Pawn,
+	bool operator==(const Position& pos) { return (x == pos.x && y == pos.y); }
+
+	Position operator+(const Position& pos) { return Position { x + pos.x, y + pos.y }; }
+	Position operator-(const Position& pos) { return Position { x - pos.x, y - pos.y }; }
+};
+
+enum Role {
+	King,
+	Queen,
 	Bishop,
 	Knight,
 	Rook,
-	Queen,
-	King
-} Role;
+	Pawn,
+};
 
-typedef enum {
+enum Side {
 	White,
 	Black
-} Side;
-
-class Piece {
-	bool is_alive;
-	Role role;
-	Side side;
-	ALLEGRO_BITMAP* sprite;
-
-	friend class Board;
-public:
-	Piece(Side color, Role type);
 };
+
+typedef entt::tag<0> Moved;
+typedef entt::tag<1> Selected;
+// typedef entt::tag<2> Dragged; TODO
