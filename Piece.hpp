@@ -1,5 +1,7 @@
 #pragma once
 
+#include <allegro5/allegro5.h>
+
 enum Role {
 	King,
 	Queen,
@@ -15,21 +17,12 @@ enum Side {
 };
 
 typedef entt::tag<"movd"_hs> Moved;
-typedef entt::tag<"seld"_hs> Selected;
-// typedef entt::tag<"drag"_hs> Dragged; TODO
-
+typedef entt::tag<"seld"_hs> Selected; 
 typedef entt::tag<"onb"_hs> OnBoard;
-// typedef entt::tag<"chkd"_hs> Checked;
-// typedef entt::tag<"matd"_hs> Mated;
+typedef entt::tag<"chkd"_hs> Checked;
+typedef entt::tag<"cpst"_hs> EnPassantable;
 
-// Where to put this??
-struct Position {
-	int x, y;
-
-	bool operator==(const Position& pos) { return (x == pos.x && y == pos.y); }
-
-	Position operator+(const Position& pos) { return Position { x + pos.x, y + pos.y }; }
-	Position operator-(const Position& pos) { return Position { x - pos.x, y - pos.y }; }
+struct Sprite {
+	ALLEGRO_BITMAP* ptr;
 };
 
-using PossibleMoves = std::vector<Position>;
